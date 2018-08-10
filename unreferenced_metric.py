@@ -2,7 +2,7 @@ __author__ = 'liming-vie'
 
 import os
 import random
-import cPickle
+import _pickle as cPickle
 import numpy as np
 import tensorflow as tf
 import data_helpers
@@ -16,13 +16,13 @@ class Unreferenced():
             qmax_length,
             rmax_length,
             fqembed,
-            frembed,
+            frembed,            
             gru_num_units,
             mlp_units,
             init_learning_rate=1e-4,
             l2_regular=0.1,
             margin=0.5,
-            train_dir='train_data/'
+            train_dir='Ruber/RUBER/data_TrainTestVal/trained_models'
             ):
         """
         Initialize related variables and construct the neural network graph.
@@ -41,22 +41,26 @@ class Unreferenced():
         self.qmax_length = qmax_length
         self.rmax_length = rmax_length
         random.seed()
-
-        print 'Loading embedding matrix'
+        print('directory of train model is '+self.train_dir)
+        print ("Loading embedding matrix")
         qembed = cPickle.load(open(fqembed, 'rb'))
-        rembed = cPickle.load(open(frembed, 'rb'))
+        rembed = cPickle.load(open(frembed, 'rb'))   
+      
 
         config = tf.ConfigProto(allow_soft_placement = True)
         config.gpu_options.allow_growth = True
-        self.session = tf.Session(config=config)
-
+        
+        tf.reset_default_graph()
         """graph"""
-
-        with self.session.as_default():
+        self.g_1 = tf.Graph()
+        self.session = tf.Session(graph=self.g_1, config=config)
+        with self.g_1.as_default():
+            tf.set_random_seed(1)
+            np.random.seed(0)
             # build bidirectional gru rnn and get final state as embedding
             def get_birnn_embedding(sizes, inputs, embed, scope):
                 embedding = tf.Variable(embed, dtype=tf.float32,
-                        name="embedding_matrix")
+				name= "embedding_matrix")
                 with tf.variable_scope('forward'):
                     fw_cell = tf.contrib.rnn.GRUCell(gru_num_units)
                 with tf.variable_scope('backward'):
@@ -108,7 +112,7 @@ class Unreferenced():
                 # [batch_size, matrix_size]
                 qTM = tf.tensordot(query_embedding, M, 1)
                 quadratic = tf.reduce_sum(qTM * reply_embedding,
-                        axis=1, keep_dims=True)
+                        axis=1, keepdims=True)
 
             # multi-layer perceptron
             with tf.variable_scope('multi_layer_perceptron'):
@@ -160,6 +164,9 @@ class Unreferenced():
                 self.log_writer=tf.summary.FileWriter(os.path.join(train_dir, 'logs/'),
                         self.session.graph)
                 self.summary = tf.Summary()
+            self.init_graph = tf.global_variables_initializer()      
+        
+   
 
     def get_batch(self, data, data_size, batch_size, idx=None):
         """
@@ -182,16 +189,16 @@ class Unreferenced():
         lens = [data[i][0] for i in idx]
         return ids, lens, idx
 
-    def make_input_feed(self, query_batch, qsizes, reply_batch, rsizes,
+    def make_input_feed(self, query_batch, query_sizes, reply_batch, reply_sizes,
             neg_batch=None, neg_sizes=None, training=True):
-        if not neg_batch:
+        if neg_batch != None:
             reply_batch += neg_batch
             reply_sizes += neg_sizes
             query_batch += query_batch
             query_sizes += query_sizes
-        return {self.query_sizes: qsizes,
+        return {self.query_sizes: query_sizes,
             self.query_inputs: query_batch,
-            self.reply_sizes: rsizes,
+            self.reply_sizes: reply_sizes,
             self.reply_inputs: reply_batch,
             self.training : training}
 
@@ -206,6 +213,22 @@ class Unreferenced():
                 reply_batch, reply_sizes, negative_reply_batch, neg_reply_sizes)
         output_feed = [self.global_step, self.train_op, self.loss]
         step, _, loss = self.session.run(output_feed, feed_dict)
+        
+
+        return step, loss
+    
+    def valid_step(self, queries, replies, data_size, batch_size):
+        query_batch, query_sizes, idx = self.get_batch(queries, data_size, batch_size)
+        reply_batch, reply_sizes, _ = self.get_batch(replies, data_size,
+                batch_size, idx)
+        negative_reply_batch, neg_reply_sizes, _ = self.get_batch(replies,
+                data_size, batch_size)
+        # compute sample loss and do optimize
+        feed_dict = self.make_input_feed(query_batch, query_sizes,
+                reply_batch, reply_sizes, negative_reply_batch, neg_reply_sizes)
+        output_feed = [self.global_step, self.loss]
+        step, loss = self.session.run(output_feed, feed_dict)
+      
 
         return step, loss
 
@@ -219,28 +242,40 @@ class Unreferenced():
             self.saver.restore(self.session, ckpt.model_checkpoint_path)
         else:
             print ('Initializing model variables')
-            self.session.run(tf.global_variables_initializer())
+            self.session.run(self.init_graph)
 
-    def train(self, data_dir, fquery, freply,
+    def train(self, data_dir, fquery, freply, fquery_val, freply_val, num_dump, num_dump_val,
             batch_size=128, steps_per_checkpoint=100):
-        queries = data_helpers.load_data(data_dir, fquery, self.qmax_length)
-        replies = data_helpers.load_data(data_dir, freply, self.rmax_length)
-        data_size = len(queries)
+        queries = data_helpers.load_data(data_dir, fquery, num_dump, self.qmax_length)
+        replies = data_helpers.load_data(data_dir, freply, num_dump, self.rmax_length)
+        queries_val = data_helpers.load_data(data_dir, fquery_val, num_dump_val, self.qmax_length)
+        replies_val = data_helpers.load_data(data_dir, freply_val, num_dump_val, self.rmax_length)
 
+        data_size = len(queries)
+        data_size_val = len(queries_val)
+        
         with self.session.as_default():
             self.init_model()
+            print('after initializing model variables')
 
-            checkpoint_path = os.path.join(self.train_dir, "unref.model")
+            checkpoint_path = os.path.join(self.train_dir, "unref1.model")
+            print('model path is ' + checkpoint_path)
             loss = 0.0
+            loss_val = 0.0
             prev_losses = [1.0]
             while True:
                 step, l = self.train_step(queries, replies, data_size, batch_size)
+                step_val, l_val =  self.valid_step(queries_val, replies_val, data_size_val, batch_size)             
                 loss += l
+                loss_val += l_val
                 # save checkpoint
                 if step % steps_per_checkpoint == 0:
                     loss /= steps_per_checkpoint
+                    loss_val /= steps_per_checkpoint
                     print ("global_step %d, loss %f, learning rate %f"  \
                             %(step, loss, self.learning_rate.eval()))
+                    print ("global_step %d, loss_validation %f, learning rate %f"  \
+                            %(step_val, loss_val, self.learning_rate.eval()))
 
                     if loss > max(prev_losses):
                         self.session.run(self.learning_rate_decay_op)
@@ -256,10 +291,10 @@ class Unreferenced():
                     reply_batch, reply_sizes, idx = self.get_batch(replies, data_size, 10, idx)
                     input_feed = self.make_input_feed(query_batch, query_sizes, reply_batch, reply_sizes, training=False)
                     score, tests = self.session.run([self.pos_score, self.test], input_feed)
-                    print '-------------'
+                    '''print ('-------------')
                     for s, t in zip(score[:10], tests[:10]):
-                        print s, t
- #                   """
+                        print (s, t)
+ #                   """'''
 
     def scores(self, data_dir, fquery, freply, fqvocab, frvocab, init=False):
         if not init:

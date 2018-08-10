@@ -9,9 +9,10 @@ class Hybrid():
             data_dir,
             frword2vec,
             fqembed,
-            frembed,
-            qmax_length=20,
-            rmax_length=30,
+            frembed,            
+            qmax_length=200,
+            rmax_length=200,
+            training=False,
             ref_method='max_min',
             gru_units=128, mlp_units=[256, 512, 128]
         ):
@@ -19,12 +20,12 @@ class Hybrid():
         self.ref=Referenced(data_dir, frword2vec, ref_method)
         self.unref=Unreferenced(qmax_length, rmax_length,
                 os.path.join(data_dir,fqembed),
-                os.path.join(data_dir,frembed),
+                os.path.join(data_dir,frembed),  
                 gru_units, mlp_units,
                 train_dir=train_dir)
 
-    def train_unref(self, data_dir, fquery, freply):
-        self.unref.train(data_dir, fquery, freply)
+    def train_unref(self, data_dir, fquery_train, freply_train, fquery_val, freply_val, num_dump, num_dump_val):
+        self.unref.train(data_dir, fquery_train, freply_train, fquery_val, freply_val, num_dump, num_dump_val)
 
     def normalize(self, scores):
         smin = min(scores)
@@ -44,20 +45,29 @@ class Hybrid():
         return [min(a,b) for a,b in zip(ref_scores, unref_scores)]
 
 if __name__ == '__main__':
-    train_dir = ''
-    data_dir = 'data/'
-    qmax_length, rmax_length = [20, 30]
-    fquery, freply = []
-    frword2vec = ''
+    train_dir = 'Ruber/RUBER/data_TrainTestVal/trained_models'
+    data_dir = 'Ruber/RUBER/data_TrainTestVal/'
+    qmax_length, rmax_length = [200, 200]
+    frword2vec = 'small_file_embeddings.txt'
+    training = True
+    
+    if training:
+        """train"""        
+        fquery_train, freply_train = ['toronto_books_p2_query_train.txt','toronto_books_p2_reply_train.txt']
+        fquery_val, freply_val = ['toronto_books_p2_query_valid.txt','toronto_books_p2_reply_valid.txt']
+        num_dump = 2
+        num_dump_val = 1
+        hybrid = Hybrid(data_dir, frword2vec, '%s.embed'%fquery_train, '%s.embed'%freply_train, qmax_length, rmax_length)
+        hybrid.train_unref(data_dir, fquery_train, freply_train, fquery_val, freply_val, num_dump, num_dump_val)
 
-    hybrid = Hybrid(data_dir, frword2vec, '%s.embed'%fquery, '%s.embed'%freply)
-    """test"""
-    out_file='word2vec_out'
-#    scores = hybrid.unref.scores(data_dir, '%s.sub'%fquery, '%s.sub'%freply, "%s.vocab%d"%(fquery,qmax_length), "%s.vocab%d"%(freply, rmax_length))
-    scores = hybrid.scores(data_dir, '%s.sub'%fquery, '%s.true.sub'%freply, out_file, '%s.vocab%d'%(fquery, qmax_length),'%s.vocab%d'%(freply, rmax_length))
-    for i, s in enumerate(scores):
-        print i,s
-    print 'avg:%f'%(sum(scores)/len(scores))
+    else:
+        """test"""
+        fquery, freply = ['src-test.txt','tgt-test.txt']
+        out_file='pred_t0.001.txt'
+        hybrid = Hybrid(data_dir, frword2vec, '%s.embed'%fquery, '%s.embed'%freply, qmax_length, rmax_length)    
+        
+        scores = hybrid.scores(data_dir, fquery, freply, out_file, '%s.vocab%d'%(fquery, qmax_length),'%s.vocab%d'%(out_file, rmax_length))
+        for i, s in enumerate(scores):
+            print (i,s)
+        print ('avg:%f'%(sum(scores)/len(scores)))
 
-    """train"""
-#    hybrid.train_unref(data_dir, fquery, freply)
