@@ -58,6 +58,7 @@ class Referenced():
 
     def score(self, groundtruth, generated):
         v1=list(self.pooling(groundtruth))
+        print(v1[0])
         v2=list(self.pooling(generated))
         a=sum(v1[i]*v2[i] for i in range(len(v1)))
         b=math.sqrt(sum(i**2 for i in v1)) * math.sqrt(sum(i**2 for i in v2))
