@@ -40,7 +40,7 @@ class Unreferenced():
         self.train_dir = train_dir
         self.qmax_length = qmax_length
         self.rmax_length = rmax_length
-        random.seed()
+        #random.seed()
         print('directory of train model is '+self.train_dir)
         print ("Loading embedding matrix")
         qembed = cPickle.load(open(fqembed, 'rb'))
