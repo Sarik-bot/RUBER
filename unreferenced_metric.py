@@ -213,8 +213,6 @@ class Unreferenced():
                 reply_batch, reply_sizes, negative_reply_batch, neg_reply_sizes)
         output_feed = [self.global_step, self.train_op, self.loss]
         step, _, loss = self.session.run(output_feed, feed_dict)
-        
-
         return step, loss
     
     def valid_step(self, queries, replies, data_size, batch_size):
@@ -228,8 +226,6 @@ class Unreferenced():
                 reply_batch, reply_sizes, negative_reply_batch, neg_reply_sizes)
         output_feed = [self.global_step, self.loss]
         step, loss = self.session.run(output_feed, feed_dict)
-      
-
         return step, loss
 
     def init_model(self):
@@ -246,6 +242,7 @@ class Unreferenced():
 
     def train(self, data_dir, fquery, freply, fquery_val, freply_val, num_dump, num_dump_val,
             batch_size=128, steps_per_checkpoint=100):
+        print('inside train method')
         queries = data_helpers.load_data(data_dir, fquery, num_dump, self.qmax_length)
         replies = data_helpers.load_data(data_dir, freply, num_dump, self.rmax_length)
         queries_val = data_helpers.load_data(data_dir, fquery_val, num_dump_val, self.qmax_length)
